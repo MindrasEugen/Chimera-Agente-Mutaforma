@@ -6,8 +6,15 @@ import readline from 'readline';
 import chalk from 'chalk';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import dotenv from 'dotenv';
 
 const execAsync = promisify(exec);
+
+// Carica ~/.chimera/.env esplicitamente (non la cwd, visto che chimera si
+// lancia da qualsiasi cartella). override:true perche' .env, se presente,
+// e' la fonte pensata per essere comoda da modificare: deve vincere anche
+// su una vecchia variabile d'ambiente OS eventualmente rimasta impostata.
+dotenv.config({ path: path.join(os.homedir(), '.chimera', '.env'), override: true });
 
 // Comandi shell bloccati a prescindere dalla conferma dell'utente: rete di
 // sicurezza aggiuntiva contro azioni distruttive o irreversibili.
