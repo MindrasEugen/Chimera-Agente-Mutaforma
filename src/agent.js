@@ -16,21 +16,39 @@ const execAsync = promisify(exec);
 // su una vecchia variabile d'ambiente OS eventualmente rimasta impostata.
 dotenv.config({ path: path.join(os.homedir(), '.chimera', '.env'), override: true });
 
-// Comandi shell bloccati a prescindere dalla conferma dell'utente: rete di
-// sicurezza aggiuntiva contro azioni distruttive o irreversibili.
+// Livello 1 - blocco assoluto: comandi che rischiano di compromettere
+// l'intero sistema operativo (non solo file/cartelle del progetto o
+// dell'utente). Bloccati sempre, senza eccezioni: nessuna conferma li
+// sblocca, nemmeno quella rafforzata del Livello 2.
 const FORBIDDEN_SHELL_PATTERNS = [
-    /\bdel\b[^\n]*\/f\b[^\n]*\/s\b[^\n]*\/q\b/i,
-    /\bdel\b[^\n]*\/s\b[^\n]*\/q\b[^\n]*\/f\b/i,
     /\bformat\s+[a-z]:/i,
-    /\brd\b[^\n]*\/s\b[^\n]*\/q\b/i,
-    /\brmdir\b[^\n]*\/s\b[^\n]*\/q\b/i,
     /system32/i,
     /\bshutdown\b/i,
     /\bdiskpart\b/i,
 ];
 
+// Livello 2 - conferma rafforzata: comandi distruttivi ma circoscritti a
+// file/cartelle (non all'intero sistema), es. pulire una cartella di
+// progetto. Non bloccati a monte: richiedono che l'utente digiti per intero
+// una parola di conferma esplicita invece del solito y/n, cosi' l'azione
+// resta possibile ma deliberata.
+const DESTRUCTIVE_SHELL_PATTERNS = [
+    /\bdel\b[^\n]*\/f\b[^\n]*\/s\b[^\n]*\/q\b/i,
+    /\bdel\b[^\n]*\/s\b[^\n]*\/q\b[^\n]*\/f\b/i,
+    /\brd\b[^\n]*\/s\b[^\n]*\/q\b/i,
+    /\brmdir\b[^\n]*\/s\b[^\n]*\/q\b/i,
+    /\bRemove-Item\b[^\n]*-Recurse\b[^\n]*-Force\b/i,
+    /\bRemove-Item\b[^\n]*-Force\b[^\n]*-Recurse\b/i,
+    /\bri\b[^\n]*-Recurse\b[^\n]*-Force\b/i,
+    /\bri\b[^\n]*-Force\b[^\n]*-Recurse\b/i,
+];
+
 function isForbiddenShellCommand(cmd) {
     return FORBIDDEN_SHELL_PATTERNS.some(re => re.test(cmd));
+}
+
+function isDestructiveShellCommand(cmd) {
+    return DESTRUCTIVE_SHELL_PATTERNS.some(re => re.test(cmd));
 }
 
 // Euristica di instradamento (Fase 1, vedi PIANO-SVILUPPO.md): parole chiave
@@ -90,6 +108,10 @@ class ChimeraAgent {
         // bin/chimera.js) puo' iniettare la propria implementazione per
         // riusare un'interfaccia readline gia' aperta sullo stdin.
         this.confirmFn = options.confirmFn || this.defaultConfirm.bind(this);
+
+        // Come confirmFn, ma per la conferma rafforzata (Livello 2): chiede
+        // di digitare per intero una parola invece di rispondere y/n.
+        this.confirmWordFn = options.confirmWordFn || this.defaultConfirmWord.bind(this);
     }
 
     async defaultConfirm(promptText) {
@@ -98,6 +120,16 @@ class ChimeraAgent {
             rl.question(promptText, answer => {
                 rl.close();
                 resolve(/^y(es)?$/i.test(answer.trim()));
+            });
+        });
+    }
+
+    async defaultConfirmWord(promptText, word) {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        return new Promise(resolve => {
+            rl.question(promptText, answer => {
+                rl.close();
+                resolve(answer.trim().toLowerCase() === word.toLowerCase());
             });
         });
     }
@@ -488,8 +520,14 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 continue;
             }
 
-            console.log(chalk.yellow(`\n💻 Il modello vuole eseguire questo comando shell:\n   ${cmd}`));
-            const confirmed = await this.confirmFn('Eseguire questo comando? (y/n): ');
+            let confirmed;
+            if (isDestructiveShellCommand(cmd)) {
+                console.log(chalk.red(`\n⚠️  Il modello vuole eseguire questo comando distruttivo e IRREVERSIBILE:\n   ${cmd}`));
+                confirmed = await this.confirmWordFn('Digita per intero "CONFERMO" per eseguirlo (qualsiasi altra risposta annulla): ', 'CONFERMO');
+            } else {
+                console.log(chalk.yellow(`\n💻 Il modello vuole eseguire questo comando shell:\n   ${cmd}`));
+                confirmed = await this.confirmFn('Eseguire questo comando? (y/n): ');
+            }
 
             if (!confirmed) {
                 console.log(chalk.gray('🚫 Comando annullato dall\'utente.'));

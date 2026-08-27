@@ -23,6 +23,9 @@ const rl = readline.createInterface({
 const agent = new ChimeraAgent({
     confirmFn: (promptText) => new Promise(resolve => {
         rl.question(promptText, answer => resolve(/^y(es)?$/i.test(answer.trim())));
+    }),
+    confirmWordFn: (promptText, word) => new Promise(resolve => {
+        rl.question(promptText, answer => resolve(answer.trim().toLowerCase() === word.toLowerCase()));
     })
 });
 let totalTokens = 0;

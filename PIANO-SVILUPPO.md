@@ -65,6 +65,14 @@ Richiesta e completata nella sessione della Fase 1, non fa parte delle fasi di i
 - **Log di qualità** (`logs/quality.jsonl`) — ✅ completato. Comandi `!feedback +` / `!feedback -`, una riga JSON per feedback con data, preset, modello, primi 100 caratteri del task, esito. Alimenta la Fase 2 sopra.
 - **Log di errori rilevanti** (`logs/chimera-failures.md`) — ✅ completato. Registra i casi in cui un task non viene completato (rate limit dopo tutti i tentativi, errore non recuperato da `healPreset`) — non i semplici `alive:false` di routine, quelli restano solo in `logs/health_*.json` come già facevano. File dentro `~/.chimera/logs/`, mai in `%USERPROFILE%\.claude\`.
 
+## Sicurezza
+
+- **Blocklist a due livelli per i comandi shell** — ✅ completato (2026-08-27). La blocklist di `src/agent.js` (`executeCommands()`) era binaria: bloccato del tutto o permesso con semplice conferma y/n. Ora è divisa in due livelli, verificati in quest'ordine in `executeCommands()`:
+  - **Livello 1 — blocco assoluto** (`FORBIDDEN_SHELL_PATTERNS`): comandi che rischiano di compromettere l'intero sistema operativo (`format`, `system32`, `shutdown`, `diskpart`). Invariato rispetto a prima: nessuna conferma, di nessun tipo, li sblocca.
+  - **Livello 2 — conferma rafforzata** (`DESTRUCTIVE_SHELL_PATTERNS`, nuovo): comandi distruttivi ma circoscritti a file/cartelle (`del /f /s /q`, `rd`/`rmdir /s /q`, `Remove-Item -Recurse -Force` e varianti equivalenti), spostati fuori dal blocco assoluto perché spesso legittimi (es. pulire una cartella di progetto). Non bloccati a monte: invece della conferma y/n, l'utente deve digitare per intero una parola di conferma esplicita (`CONFERMO`, case-insensitive ma parola intera) tramite la nuova `confirmWordFn`/`defaultConfirmWord`, iniettabile allo stesso modo di `confirmFn` esistente. Qualsiasi altra risposta annulla, con lo stesso messaggio di annullo già usato altrove.
+  - I blocchi `write` (creazione/scrittura file) e le categorie `read`/`ls` non sono stati toccati: restano rispettivamente a conferma y/n semplice e automatici, come prima.
+  - Verificato con uno script di prova (poi rimosso) su una cartella scratch: comando di Livello 1 sempre bloccato; comando di Livello 2 annullato con parola sbagliata ed eseguito solo con `CONFERMO` corretto; comando shell normale e scrittura file invariati con y/n.
+
 ## Bug preesistenti risolti
 
 - **Icone/caratteri corrotti in console** — ✅ risolto. `bin/chimera.js` e `src/agent.js` avevano sequenze `??`/`�` al posto di emoji (probabile problema di codifica in un salvataggio precedente al di fuori di questo progetto), incluse due parole italiane rovinate ("pi�" → "più", "disponibilit�" → "disponibilità"). Sostituite con emoji reali e coerenti per categoria (✅/❌ vivo-morto, 🔧 auto-guarigione, 💻 shell, 📝 scrittura file, 📄 lettura file, 📁 elenco directory, 🚫 bloccato/annullato, 🎭 identità di Chimera). Verificato a occhio con uno script di prova poi rimosso.
