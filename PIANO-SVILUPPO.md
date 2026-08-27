@@ -45,26 +45,30 @@ Oggi Chimera cambia preset solo su comando esplicito dell'utente (`/tecnico`, `/
 
 **Prerequisito:** Fase 2 completata — senza sapere dove le keyword falliscono, non si sa nemmeno se serve la Fase 3, né come scrivere il prompt di classificazione.
 
-## Fase 4 — Altre idee emerse esplorando il codice — 🔲 NON iniziata, solo annotate
+## Fase 4 — Altre idee emerse esplorando il codice
 
-Idee raccolte ma non pianificate in dettaglio, da valutare quando si arriva a quel punto:
+Quattro punti indipendenti, scelti perché non richiedevano dati reali non ancora raccolti. Completati in sessione dedicata (dopo la Fase 1):
 
-- **Instradamento che tiene conto della cronologia recente**, non solo del singolo messaggio (`this.history` esiste già in `agent.js` — oggi `suggestPreset` guarda solo l'ultimo input).
-- **Preset "creativo"** manca in `config.json` pur essendo citato nell'help testuale di `bin/chimera.js` (`/veloce | /potente | /creativo | /tecnico`) e nei nomi di modello nel testo di `!help` (che cita ancora Gemini/Llama/Mistral/Gemma, non più i modelli NVIDIA/Cohere/Poolside attuali) — disallineamento preesistente, non toccato in questa sessione perché fuori scope, ma da sistemare quando si tocca di nuovo `bin/chimera.js` per evitare confusione con l'utente.
-- **Health check di qualità, non solo di vita**: `checkAllModels()` verifica solo `alive: true/false` con un ping da 1 token — potrebbe in futuro usare `quality.jsonl` per marcare un preset come "vivo ma scadente" e suggerire `healPreset` anche in quel caso, non solo quando il modello smette di rispondere del tutto.
-- **Collegamento con lo storico di Nova/Vibe (Claude Code)**: valutato e scartato per ora — Chimera resta volutamente isolata da `%USERPROFILE%\.claude\`; se in futuro serve un collegamento, deve essere Claude Code a leggere `logs/chimera-failures.md` da fuori, mai il contrario.
+- **1. Preset "creativo" aggiunto** — ✅ completato. `config.json` ora ha `google/gemma-4-31b-it:free` (scelto da `findAllFreeModels()` tra i modelli gratuiti disponibili su OpenRouter, instruction-tuned, generalista). Verificato che `suggestPreset()` ci instrada correttamente task come "scrivimi una poesia" o "scrivi un racconto".
+- **2. `!help` dinamico** — ✅ completato. Non elenca più nomi di modello hardcoded (erano obsoleti: Gemini/Llama/Mistral/Gemma non corrispondevano più ai modelli reali NVIDIA/Cohere/Poolside/Google in uso). Ora legge `agent.config.presets` e mostra la descrizione di ciascun preset, quindi resta coerente anche dopo una sostituzione automatica via `healPreset`.
+- **3. Instradamento con cronologia recente** — ✅ completato. `suggestPreset()` ora consulta `this.history` (ultimi 3 messaggi utente) SOLO quando il messaggio corrente non ha nessun segnale diretto di parole chiave — mai come priorità sopra un segnale esplicito nel messaggio attuale. Verificato: dopo un contesto tecnico, "e ora?"/"continua" restano su tecnico; ma "scrivimi una poesia" nello stesso contesto passa comunque a creativo, come deve essere.
+- **4. Health check di qualità** — ✅ implementato, ⏸️ verifica funzionale sospesa. `readQualityStats()` legge `logs/quality.jsonl` e calcola, per preset con almeno 5 feedback, la percentuale di positivi; se sotto il 40% viene segnalato come "vivo ma qualità scarsa" sia in `!health` sia all'avvio, senza mai triggerare `healPreset()` automaticamente. **Non verificabile con dati reali finché `quality.jsonl` non accumula feedback da uso reale** (il file oggi non esiste — nessun dato fittizio è stato scritto, come richiesto). Verificato solo che `readQualityStats()` si comporta correttamente a file assente (ritorna `{}`, nessun errore).
+
+**Collegamento con lo storico di Nova/Vibe (Claude Code)**: valutato e scartato per ora — Chimera resta volutamente isolata da `%USERPROFILE%\.claude\`; se in futuro serve un collegamento, deve essere Claude Code a leggere `logs/chimera-failures.md` da fuori, mai il contrario. Nessun accesso a quella cartella è stato fatto in nessuna delle sessioni finora.
 
 ---
 
-## Punti 2 e 3 di questa sessione (infrastruttura, non "fasi" del routing)
+## Infrastruttura di supporto (non "fasi" del routing)
 
-Questi non sono fasi del piano di instradamento ma infrastruttura di supporto, richiesta e completata in questa stessa sessione:
+Richiesta e completata nella sessione della Fase 1, non fa parte delle fasi di instradamento ma le alimenta:
 
 - **Log di qualità** (`logs/quality.jsonl`) — ✅ completato. Comandi `!feedback +` / `!feedback -`, una riga JSON per feedback con data, preset, modello, primi 100 caratteri del task, esito. Alimenta la Fase 2 sopra.
 - **Log di errori rilevanti** (`logs/chimera-failures.md`) — ✅ completato. Registra i casi in cui un task non viene completato (rate limit dopo tutti i tentativi, errore non recuperato da `healPreset`) — non i semplici `alive:false` di routine, quelli restano solo in `logs/health_*.json` come già facevano. File dentro `~/.chimera/logs/`, mai in `%USERPROFILE%\.claude\`.
 
-## Stato a fine sessione odierna
+## Stato del progetto
 
-- Fase 1: implementata e verificata sintatticamente. Da provare in uso reale per giudicare se le euristiche sono sensate (esempi di prova nel riepilogo di fine sessione).
-- Punti 2 e 3: implementati.
-- Fasi 2, 3, 4: solo pianificate, nessun codice scritto — richiedono dati d'uso reali (Fase 2) prima di avere senso.
+- **Fase 1** (instradamento a parole chiave): implementata e verificata, sia sintatticamente sia con esempi di task reali.
+- **Log di qualità e log di errori** (infrastruttura): implementati.
+- **Fase 4** (4 punti indipendenti: preset creativo, `!help` dinamico, instradamento con cronologia, health check di qualità): implementata e verificata con esempi — eccetto il punto 4 (health check di qualità), corretto sintatticamente ma non ancora verificabile con dati reali: `logs/quality.jsonl` non contiene ancora feedback da uso reale.
+- **Fase 2** (raffinamento in base al feedback): non iniziata — richiede un volume reale di `!feedback +`/`!feedback -` accumulato in uso normale, non ancora presente.
+- **Fase 3** (classificazione via AI): non iniziata — dipende dai risultati della Fase 2.

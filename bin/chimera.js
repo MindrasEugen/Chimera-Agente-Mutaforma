@@ -70,15 +70,20 @@ rl.on('line', async (input) => {
         const [cmd, ...args] = trimmed.split(' ');
         
         switch(cmd) {
-            case '!help':
+            case '!help': {
+                // Le descrizioni vengono lette da config.json invece di
+                // elencare nomi di modello hardcoded: i modelli cambiano nel
+                // tempo per via della rotazione automatica di healPreset(),
+                // le descrizioni dei preset restano il riferimento stabile.
+                const presetLines = Object.entries(agent.config.presets)
+                    .map(([name, info]) => `  /${name.padEnd(12)} - ${info.description}`)
+                    .join('\n');
+
                 console.log(`
 ${chalk.bold('?????? CHIMERA - COMANDI:')}
 
 ${chalk.yellow('Cambio modello:')}
-  /veloce      - Gemini 2.0 Flash (rapido)
-  /potente     - Llama 3.1 8B (ragionamento)
-  /creativo    - Mistral 7B (scrittura)
-  /tecnico     - Gemma 2 9B (codice)
+${presetLines}
   /list        - Lista modelli disponibili
 
 ${chalk.yellow('Altri comandi:')}
@@ -97,14 +102,19 @@ ${chalk.yellow('Instradamento automatico:')}
   PIANO-SVILUPPO.md).
                 `);
                 break;
-                
+            }
+
             case '!health':
                 console.log(chalk.yellow('\n?? Verifica disponibilit� modelli...\n'));
                 const { results, deadModels } = await agent.checkAllModels();
                 results.forEach(r => {
                     const icon = r.alive ? '?' : '?';
                     console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
-                    if (!r.alive) console.log(`     ${chalk.red(r.error?.substring(0, 100))}`);
+                    if (!r.alive) {
+                        console.log(`     ${chalk.red(r.error?.substring(0, 100))}`);
+                    } else if (r.qualityWarning) {
+                        console.log(`     ${chalk.yellow(`[vivo ma qualita' scarsa] ${Math.round(r.qualityRatio * 100)}% feedback positivo su ${r.qualityFeedbackCount} valutazioni`)}`);
+                    }
                 });
                 if (deadModels.length > 0) {
                     console.log(`\n${chalk.yellow('??  Modelli non disponibili:')} ${deadModels.join(', ')}`);

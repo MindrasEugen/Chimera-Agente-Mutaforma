@@ -119,21 +119,53 @@ class ChimeraAgent {
     // config.presets, o null se non c'e' un suggerimento chiaro (in quel
     // caso chi chiama deve lasciare il preset attuale invariato).
     suggestPreset(userInput) {
-        const scores = {};
+        const direct = this.scoreCategories(userInput);
+        if (direct.length > 0) return direct[0][0];
 
-        for (const [category, patterns] of Object.entries(ROUTING_KEYWORDS)) {
-            if (!this.config.presets[category]) continue;
-            const hits = patterns.filter(re => re.test(userInput)).length;
-            if (hits > 0) scores[category] = hits;
-        }
+        // Fase 4, punto 3: nessun segnale diretto nel messaggio corrente.
+        // Prima di ricadere sul default, guarda se gli ultimi scambi
+        // avevano un segnale chiaro (es. "e ora?" dopo un task tecnico
+        // resta su tecnico). La cronologia non vince mai su un segnale
+        // esplicito nel messaggio attuale: si arriva qui solo se sopra non
+        // c'e' stato nessun match.
+        const fromHistory = this.suggestFromHistory();
+        if (fromHistory) return fromHistory;
 
-        const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-        if (ranked.length > 0) return ranked[0][0];
-
-        // Nessun segnale di categoria: un task breve e diretto va sul preset
+        // Ancora nessun segnale: un task breve e diretto va sul preset
         // veloce, se configurato. Altrimenti nessun suggerimento.
         if (userInput.trim().length < 60 && this.config.presets.veloce) {
             return 'veloce';
+        }
+
+        return null;
+    }
+
+    // Ritorna le categorie con match, ordinate per numero di parole chiave
+    // trovate (piu' alto prima). Condivisa tra suggestPreset() e
+    // suggestFromHistory() per non duplicare la logica di scoring.
+    scoreCategories(text) {
+        const scores = {};
+        for (const [category, patterns] of Object.entries(ROUTING_KEYWORDS)) {
+            if (!this.config.presets[category]) continue;
+            const hits = patterns.filter(re => re.test(text)).length;
+            if (hits > 0) scores[category] = hits;
+        }
+        return Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    }
+
+    // Guarda gli ultimi `lookback` messaggi utente nella cronologia (dal piu'
+    // recente al meno recente) e ritorna la categoria del primo che ha un
+    // segnale chiaro. Usata solo come aiuto nei casi ambigui, mai come
+    // priorita' sopra il contenuto del messaggio attuale.
+    suggestFromHistory(lookback = 3) {
+        const recentUserMessages = this.history
+            .filter(m => m.role === 'user')
+            .slice(-lookback)
+            .reverse();
+
+        for (const msg of recentUserMessages) {
+            const ranked = this.scoreCategories(msg.content);
+            if (ranked.length > 0) return ranked[0][0];
         }
 
         return null;
@@ -250,6 +282,39 @@ class ChimeraAgent {
         return true;
     }
 
+    // Fase 4, punto 4: legge logs/quality.jsonl (se esiste) e calcola, per
+    // ogni preset con abbastanza feedback, la percentuale di giudizi
+    // positivi. Non tocca alive/healPreset in alcun modo: e' solo lettura,
+    // pensata per essere unita ai risultati di checkAllModels().
+    readQualityStats(minFeedback = 5, positiveThreshold = 0.4) {
+        const logPath = path.join(os.homedir(), '.chimera', 'logs', 'quality.jsonl');
+        const counts = {};
+
+        if (!fs.existsSync(logPath)) return counts;
+
+        try {
+            const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);
+            for (const line of lines) {
+                let entry;
+                try { entry = JSON.parse(line); } catch { continue; }
+                if (!entry || !entry.preset) continue;
+                if (!counts[entry.preset]) counts[entry.preset] = { positive: 0, total: 0 };
+                counts[entry.preset].total++;
+                if (entry.rating === '+') counts[entry.preset].positive++;
+            }
+        } catch {
+            return {};
+        }
+
+        const stats = {};
+        for (const [preset, { positive, total }] of Object.entries(counts)) {
+            if (total < minFeedback) continue;
+            const ratio = positive / total;
+            stats[preset] = { total, positive, ratio, lowQuality: ratio < positiveThreshold };
+        }
+        return stats;
+    }
+
     async checkAllModels() {
         const results = [];
         const deadModels = [];
@@ -274,6 +339,19 @@ class ChimeraAgent {
                 }
             }
         }
+
+        // Segnala i preset vivi ma con feedback di qualita' scarso (Fase 4,
+        // punto 4). Solo segnalazione: non tocca deadModels ne' triggera
+        // healPreset -- la decisione resta all'utente.
+        const qualityStats = this.readQualityStats();
+        results.forEach(r => {
+            const q = qualityStats[r.name];
+            if (r.alive && q) {
+                r.qualityWarning = q.lowQuality;
+                r.qualityRatio = q.ratio;
+                r.qualityFeedbackCount = q.total;
+            }
+        });
 
         const logDir = path.join(os.homedir(), '.chimera', 'logs');
         const reportPath = path.join(logDir, `health_${new Date().toISOString().split('T')[0]}.json`);
@@ -300,6 +378,9 @@ class ChimeraAgent {
         results.forEach(r => {
             const icon = r.alive ? '?' : '?';
             console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
+            if (r.qualityWarning) {
+                console.log(chalk.yellow(`     [qualita' scarsa] ${Math.round(r.qualityRatio * 100)}% feedback positivo su ${r.qualityFeedbackCount} valutazioni`));
+            }
         });
 
         if (deadModels.length > 0) {
