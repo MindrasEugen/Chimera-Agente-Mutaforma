@@ -6,7 +6,7 @@ import ChimeraAgent from '../src/agent.js';
 
 const banner = `
 ${chalk.green('+--------------------------------------+')}
-${chalk.green('�')}   ${chalk.bold.white('?????? CHIMERA - Agente Mutaforma')} ${chalk.green('�')}
+${chalk.green('🎭')}   ${chalk.bold.white('CHIMERA - Agente Mutaforma')} ${chalk.green('🎭')}
 ${chalk.green('+--------------------------------------+')}
 `;
 
@@ -34,7 +34,7 @@ let justSetPresetManually = false;
 
 agent.startupHealthCheck().then(result => {
     if (result && result.deadModels.length > 0) {
-        console.log(chalk.yellow('??  Alcuni modelli non disponibili. Usa !health per dettagli.\n'));
+        console.log(chalk.yellow('⚠️  Alcuni modelli non disponibili. Usa !health per dettagli.\n'));
     }
 });
 
@@ -49,7 +49,7 @@ rl.on('line', async (input) => {
         const presetName = trimmed.substring(1).toLowerCase();
         
         if (presetName === 'list') {
-            console.log(chalk.bold('\n?? Modelli disponibili:'));
+            console.log(chalk.bold('\n📋 Modelli disponibili:'));
             Object.entries(agent.config.presets).forEach(([name, info]) => {
                 const marker = agent.currentModel === info.model ? ' ?' : '';
                 console.log(`  /${name.padEnd(12)} ${info.description}${marker}`);
@@ -80,7 +80,7 @@ rl.on('line', async (input) => {
                     .join('\n');
 
                 console.log(`
-${chalk.bold('?????? CHIMERA - COMANDI:')}
+${chalk.bold('🎭 CHIMERA - COMANDI:')}
 
 ${chalk.yellow('Cambio modello:')}
 ${presetLines}
@@ -105,10 +105,10 @@ ${chalk.yellow('Instradamento automatico:')}
             }
 
             case '!health':
-                console.log(chalk.yellow('\n?? Verifica disponibilit� modelli...\n'));
+                console.log(chalk.yellow('\n🩺 Verifica disponibilità modelli...\n'));
                 const { results, deadModels } = await agent.checkAllModels();
                 results.forEach(r => {
-                    const icon = r.alive ? '?' : '?';
+                    const icon = r.alive ? '✅' : '❌';
                     console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
                     if (!r.alive) {
                         console.log(`     ${chalk.red(r.error?.substring(0, 100))}`);
@@ -117,23 +117,23 @@ ${chalk.yellow('Instradamento automatico:')}
                     }
                 });
                 if (deadModels.length > 0) {
-                    console.log(`\n${chalk.yellow('??  Modelli non disponibili:')} ${deadModels.join(', ')}`);
-                    console.log(chalk.yellow('?? Cerco alternative gratuite...\n'));
+                    console.log(`\n${chalk.yellow('⚠️  Modelli non disponibili:')} ${deadModels.join(', ')}`);
+                    console.log(chalk.yellow('🔍 Cerco alternative gratuite...\n'));
                     const alternatives = await agent.findAllFreeModels();
                     if (alternatives.length > 0) {
                         console.log(chalk.bold('Modelli free disponibili:'));
                         alternatives.slice(0, 10).forEach(alt => {
-                            console.log(`  ?? ${chalk.cyan(alt.id)}`);
+                            console.log(`  🔹 ${chalk.cyan(alt.id)}`);
                         });
                     }
                 } else {
-                    console.log(`\n${chalk.green('? Tutti i modelli sono attivi!')}`);
+                    console.log(`\n${chalk.green('✅ Tutti i modelli sono attivi!')}`);
                 }
                 console.log('');
                 break;
                 
             case '!current':
-                console.log(`\n?????? Attuale: /${agent.getCurrentPresetName()}`);
+                console.log(`\n🎭 Attuale: /${agent.getCurrentPresetName()}`);
                 console.log(`   Modello: ${agent.currentModel}\n`);
                 break;
                 
@@ -170,7 +170,7 @@ ${chalk.yellow('Instradamento automatico:')}
             }
 
             case '!exit':
-                console.log(chalk.green('\n?????? Chimera si ritira...'));
+                console.log(chalk.green('\n👋 Chimera si ritira...'));
                 console.log(chalk.gray(`Token totali: ${totalTokens.toLocaleString()}`));
                 process.exit(0);
                 
@@ -219,7 +219,7 @@ ${chalk.yellow('Instradamento automatico:')}
         console.log('\n' + chalk.gray('-'.repeat(50)));
         console.log(result.reply);
         console.log(chalk.gray('-'.repeat(50)));
-        console.log(chalk.gray(`?????? ${agent.getCurrentPresetName()} | ${result.tokens} token | Totale: ${totalTokens.toLocaleString()}`));
+        console.log(chalk.gray(`🎭 ${agent.getCurrentPresetName()} | ${result.tokens} token | Totale: ${totalTokens.toLocaleString()}`));
     } catch (error) {
         console.log(chalk.red(`Errore: ${error.message}`));
     }
@@ -228,7 +228,7 @@ ${chalk.yellow('Instradamento automatico:')}
 });
 
 rl.on('SIGINT', () => { 
-    console.log(chalk.green('\n?????? Ciao Gino!')); 
+    console.log(chalk.green('\n👋 Ciao Gino!'));
     process.exit(0); 
 });
 

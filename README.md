@@ -91,7 +91,7 @@ La API key OpenRouter vive solo in `.env`, mai in un file tracciato da git.
 Tutto dentro `~/.chimera/logs/` — mai nella cartella `.claude` di Claude Code, che è un sistema completamente separato:
 
 - **Health check dei modelli** (`health_YYYY-MM-DD.json`, `last_check.json`) — esito del controllo periodico "il modello risponde?" ed eventuali sostituzioni automatiche (`model-swaps.log`).
-- **Log di qualità** (`quality.jsonl`) — un feedback per riga, alimentato da `!feedback +`/`!feedback -`: preset, modello, estratto del task, esito.
+- **Log di qualità** (`quality.jsonl`) — un feedback per riga, alimentato da `!feedback +`/`!feedback -`: preset, modello, estratto del task, esito. Per un riepilogo leggibile: `npm run quality-report`.
 - **Log di errori rilevanti** (`chimera-failures.md`) — task che non sono stati completati (non i semplici modelli irraggiungibili di routine, quelli restano solo negli health check).
 
 ## 6. Stato del progetto e sviluppi futuri

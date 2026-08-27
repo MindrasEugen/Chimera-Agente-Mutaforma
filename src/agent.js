@@ -109,7 +109,7 @@ class ChimeraAgent {
     switchModel(preset) {
         if (this.config.presets[preset]) {
             this.currentModel = this.config.presets[preset].model;
-            return `?? Mutato in: ${preset} (${this.config.presets[preset].description})`;
+            return `🎭 Mutato in: ${preset} (${this.config.presets[preset].description})`;
         }
         return `Preset non trovato. Disponibili: ${Object.keys(this.config.presets).join(', ')}`;
     }
@@ -204,7 +204,7 @@ class ChimeraAgent {
             const line = `${new Date().toISOString()} | preset=${presetName} | old=${oldModel} | new=${newModel}\n`;
             fs.appendFileSync(logPath, line);
         } catch (e) {
-            console.log(`?? Impossibile scrivere logs/model-swaps.log: ${e.message}`);
+            console.log(`⚠️ Impossibile scrivere logs/model-swaps.log: ${e.message}`);
         }
     }
 
@@ -245,18 +245,18 @@ class ChimeraAgent {
             const entry = `\n## ${new Date().toISOString()}\n- Preset: ${presetName}\n- Modello: ${model}\n- Task: ${userInput.substring(0, 150)}\n- Errore: ${errorMessage}\n`;
             fs.appendFileSync(logPath, entry);
         } catch (e) {
-            console.log(`?? Impossibile scrivere logs/chimera-failures.md: ${e.message}`);
+            console.log(`⚠️ Impossibile scrivere logs/chimera-failures.md: ${e.message}`);
         }
     }
 
     async healPreset(presetName, deadModel) {
-        console.log(`\n?? Auto-guarigione: ${presetName} (${deadModel}) non funziona pi�...`);
-        console.log('?? Cerco un modello free alternativo...');
+        console.log(`\n🔧 Auto-guarigione: ${presetName} (${deadModel}) non funziona più...`);
+        console.log('🔍 Cerco un modello free alternativo...');
 
         const freeModels = await this.findAllFreeModels();
 
         if (freeModels.length === 0) {
-            console.log('? Nessun modello free disponibile al momento.');
+            console.log('❌ Nessun modello free disponibile al momento.');
             return false;
         }
 
@@ -276,7 +276,7 @@ class ChimeraAgent {
 
         this.logModelSwap(presetName, oldModel, replacement.id);
 
-        console.log(`? Sostituito con: ${replacement.id}`);
+        console.log(`✅ Sostituito con: ${replacement.id}`);
         console.log(`   ${replacement.name || replacement.description?.substring(0, 80)}`);
 
         return true;
@@ -372,11 +372,11 @@ class ChimeraAgent {
 
     async startupHealthCheck() {
         if (!this.shouldHealthCheck()) return null;
-        console.log('?? Verifica modelli...\n');
+        console.log('🩺 Verifica modelli...\n');
         const { results, deadModels } = await this.checkAllModels();
 
         results.forEach(r => {
-            const icon = r.alive ? '?' : '?';
+            const icon = r.alive ? '✅' : '❌';
             console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
             if (r.qualityWarning) {
                 console.log(chalk.yellow(`     [qualita' scarsa] ${Math.round(r.qualityRatio * 100)}% feedback positivo su ${r.qualityFeedbackCount} valutazioni`));
@@ -384,9 +384,9 @@ class ChimeraAgent {
         });
 
         if (deadModels.length > 0) {
-            console.log(`\n??  ${deadModels.length} modelli riparati automaticamente. Usa !health per dettagli.`);
+            console.log(`\n⚠️  ${deadModels.length} modelli riparati automaticamente. Usa !health per dettagli.`);
         } else {
-            console.log(`\n? Tutti i modelli sono attivi!`);
+            console.log(`\n✅ Tutti i modelli sono attivi!`);
         }
 
         console.log('');
@@ -459,20 +459,20 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
 
             if (error.status === 429) {
                 this.logChimeraFailure(presetName, this.currentModel, userInput, `Rate limit (429): ${error.message}`);
-                return { reply: `? Rate limit per ${presetName}. Prova /bilanciato o attendi.`, model: this.currentModel, tokens: 0 };
+                return { reply: `⏳ Rate limit per ${presetName}. Prova /bilanciato o attendi.`, model: this.currentModel, tokens: 0 };
             }
 
             if (error.status === 401 || error.status === 404 || error.message.includes('not found') || error.message.includes('disabled')) {
-                console.log(chalk.yellow(`\n?? Il modello ${presetName} non funziona. Auto-riparazione...`));
+                console.log(chalk.yellow(`\n🔧 Il modello ${presetName} non funziona. Auto-riparazione...`));
                 const healed = await this.healPreset(presetName, this.currentModel);
                 if (healed) {
-                    console.log(chalk.green('? Modello sostituito!\n'));
+                    console.log(chalk.green('✅ Modello sostituito!\n'));
                     return this.think(userInput);
                 }
             }
 
             this.logChimeraFailure(presetName, this.currentModel, userInput, error.message);
-            return { reply: `? ${error.message}`, model: this.currentModel, tokens: 0 };
+            return { reply: `❌ ${error.message}`, model: this.currentModel, tokens: 0 };
         }
     }
 
@@ -483,17 +483,17 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
             const cmd = m[1].trim();
 
             if (isForbiddenShellCommand(cmd)) {
-                console.log(chalk.red(`\n?? Comando bloccato dalla whitelist di sicurezza (non eseguibile nemmeno con conferma):\n   ${cmd}`));
-                text = text.replace(m[0], m[0] + '\n?? Comando bloccato dalla whitelist di sicurezza (potenzialmente distruttivo).');
+                console.log(chalk.red(`\n🚫 Comando bloccato dalla whitelist di sicurezza (non eseguibile nemmeno con conferma):\n   ${cmd}`));
+                text = text.replace(m[0], m[0] + '\n🚫 Comando bloccato dalla whitelist di sicurezza (potenzialmente distruttivo).');
                 continue;
             }
 
-            console.log(chalk.yellow(`\n?? Il modello vuole eseguire questo comando shell:\n   ${cmd}`));
+            console.log(chalk.yellow(`\n💻 Il modello vuole eseguire questo comando shell:\n   ${cmd}`));
             const confirmed = await this.confirmFn('Eseguire questo comando? (y/n): ');
 
             if (!confirmed) {
-                console.log(chalk.gray('?? Comando annullato dall\'utente.'));
-                text = text.replace(m[0], m[0] + '\n?? Comando annullato dall\'utente.');
+                console.log(chalk.gray('🚫 Comando annullato dall\'utente.'));
+                text = text.replace(m[0], m[0] + '\n🚫 Comando annullato dall\'utente.');
                 continue;
             }
 
@@ -501,9 +501,9 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 const { stdout, stderr } = await execAsync(cmd, {
                     timeout: 30000, maxBuffer: 5 * 1024 * 1024, cwd: process.cwd()
                 });
-                text = text.replace(m[0], m[0] + '\n?? ' + (stdout || stderr || '(ok)').trim());
+                text = text.replace(m[0], m[0] + '\n🖥️ ' + (stdout || stderr || '(ok)').trim());
             } catch (e) {
-                text = text.replace(m[0], m[0] + '\n? ' + e.message);
+                text = text.replace(m[0], m[0] + '\n❌ ' + e.message);
             }
         }
 
@@ -514,13 +514,13 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
             const content = m[2].trim();
             const preview = content.length > 500 ? content.substring(0, 500) + '\n... (troncato)' : content;
 
-            console.log(chalk.yellow(`\n?? Il modello vuole scrivere questo file:\n   ${filePath}`));
+            console.log(chalk.yellow(`\n📝 Il modello vuole scrivere questo file:\n   ${filePath}`));
             console.log(chalk.gray(`--- contenuto ---\n${preview}\n-----------------`));
             const confirmed = await this.confirmFn('Scrivere questo file? (y/n): ');
 
             if (!confirmed) {
-                console.log(chalk.gray('?? Scrittura annullata dall\'utente.'));
-                text = text.replace(m[0], '?? Scrittura annullata dall\'utente: ' + filePath);
+                console.log(chalk.gray('🚫 Scrittura annullata dall\'utente.'));
+                text = text.replace(m[0], '🚫 Scrittura annullata dall\'utente: ' + filePath);
                 continue;
             }
 
@@ -528,9 +528,9 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 const dir = path.dirname(filePath);
                 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
                 fs.writeFileSync(filePath, content);
-                text = text.replace(m[0], '? Creato: ' + filePath);
+                text = text.replace(m[0], '✅ Creato: ' + filePath);
             } catch (e) {
-                text = text.replace(m[0], '? ' + e.message);
+                text = text.replace(m[0], '❌ ' + e.message);
             }
         }
 
@@ -538,12 +538,12 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
         const readMatches = [...text.matchAll(/```read\n([\s\S]*?)```/g)];
         for (const m of readMatches) {
             const filePath = m[1].trim();
-            console.log(chalk.gray(`?? Lettura file: ${filePath}`));
+            console.log(chalk.gray(`📄 Lettura file: ${filePath}`));
             try {
                 const content = fs.readFileSync(filePath, 'utf-8');
-                text = text.replace(m[0], '?? ' + filePath + ':\n' + content.substring(0, 2000));
+                text = text.replace(m[0], '📄 ' + filePath + ':\n' + content.substring(0, 2000));
             } catch (e) {
-                text = text.replace(m[0], '? ' + e.message);
+                text = text.replace(m[0], '❌ ' + e.message);
             }
         }
 
@@ -551,13 +551,13 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
         const lsMatches = [...text.matchAll(/```ls\n([\s\S]*?)```/g)];
         for (const m of lsMatches) {
             const dir = m[1].trim() || '.';
-            console.log(chalk.gray(`?? Elenco directory: ${dir}`));
+            console.log(chalk.gray(`📁 Elenco directory: ${dir}`));
             try {
                 const files = fs.readdirSync(dir, { withFileTypes: true });
-                const list = files.map(f => `${f.isDirectory() ? '??' : '??'} ${f.name}`).join('\n');
-                text = text.replace(m[0], '?? ' + dir + ':\n' + list);
+                const list = files.map(f => `${f.isDirectory() ? '📁' : '📄'} ${f.name}`).join('\n');
+                text = text.replace(m[0], '📁 ' + dir + ':\n' + list);
             } catch (e) {
-                text = text.replace(m[0], '? ' + e.message);
+                text = text.replace(m[0], '❌ ' + e.message);
             }
         }
 

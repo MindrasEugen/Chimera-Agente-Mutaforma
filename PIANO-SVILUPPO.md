@@ -25,8 +25,8 @@ Oggi Chimera cambia preset solo su comando esplicito dell'utente (`/tecnico`, `/
 
 **Cosa serve:**
 - Accumulare un po' di `!feedback +`/`!feedback -` in uso reale (settimane, non ore).
-- Uno script (anche minimale, `node` o manuale) che legga `logs/quality.jsonl` e mostri: percentuale di feedback positivo per preset, ed eventualmente per categoria di parola chiave che ha scatenato il suggerimento — per capire se es. "tecnico" viene confermato spesso o corretto spesso dall'utente.
-- Sulla base di questo, aggiustare le liste di keyword in `suggestPreset()` (aggiungerne, toglierne, cambiare le soglie).
+- ✅ **Script già pronto**: `scripts/quality-report.mjs` (`npm run quality-report`) legge `logs/quality.jsonl` e mostra percentuale di feedback positivo per preset, con barra e nota se il campione è piccolo (<5). Verificato con dati finti in uno script temporaneo separato (mai scritti nel vero `quality.jsonl`, che oggi resta assente). **Limite noto**: non rompe per categoria di parola chiave che ha scatenato il suggerimento, perché `quality.jsonl` oggi non registra quella regola — solo preset/modello/task/esito. Se in futuro servisse quel dettaglio, va esteso `logQualityFeedback()`/`lastTask` in `src/agent.js` per portarsi dietro anche la categoria che ha scatenato il suggerimento in `bin/chimera.js`.
+- Sulla base dei numeri di `quality-report.mjs`, aggiustare le liste di keyword in `suggestPreset()` (aggiungerne, toglierne, cambiare le soglie).
 
 **Come si misura se ha funzionato:** il tasso di correzione manuale del suggerimento (l'utente scrive un preset diverso da quello suggerito) scende nel tempo.
 
@@ -67,6 +67,7 @@ Richiesta e completata nella sessione della Fase 1, non fa parte delle fasi di i
 
 ## Bug preesistenti risolti
 
+- **Icone/caratteri corrotti in console** — ✅ risolto. `bin/chimera.js` e `src/agent.js` avevano sequenze `??`/`�` al posto di emoji (probabile problema di codifica in un salvataggio precedente al di fuori di questo progetto), incluse due parole italiane rovinate ("pi�" → "più", "disponibilit�" → "disponibilità"). Sostituite con emoji reali e coerenti per categoria (✅/❌ vivo-morto, 🔧 auto-guarigione, 💻 shell, 📝 scrittura file, 📄 lettura file, 📁 elenco directory, 🚫 bloccato/annullato, 🎭 identità di Chimera). Verificato a occhio con uno script di prova poi rimosso.
 - **`!health` chiamava un metodo inesistente** — ✅ risolto. In `bin/chimera.js`, il ramo "cerco alternative gratuite" (scatta solo quando `checkAllModels()` trova almeno un modello morto) chiamava `agent.findFreeAlternatives()`, mai esistito su `ChimeraAgent` — solo `findAllFreeModels()` (stessa firma: nessun argomento, ritorna `[{id, name, description}]`). Il bug non si manifestava nei test perché scattava solo col modello morto, cioè proprio il caso d'uso principale di `!health`. Corretto rinominando la chiamata. Verificato simulando un modello morto (monkey-patch temporaneo di `checkModelHealth`/`healPreset`, script poi rimosso): nessun crash, alternative elencate correttamente.
 
 ## Stato del progetto
