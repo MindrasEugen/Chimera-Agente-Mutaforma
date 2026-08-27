@@ -27,6 +27,11 @@ const agent = new ChimeraAgent({
 });
 let totalTokens = 0;
 
+// Diventa true subito dopo una selezione manuale di preset (/comando):
+// sopprime il suggerimento di instradamento per il task immediatamente
+// successivo, poi si resetta (vedi PIANO-SVILUPPO.md, nota di design).
+let justSetPresetManually = false;
+
 agent.startupHealthCheck().then(result => {
     if (result && result.deadModels.length > 0) {
         console.log(chalk.yellow('??  Alcuni modelli non disponibili. Usa !health per dettagli.\n'));
@@ -53,6 +58,7 @@ rl.on('line', async (input) => {
         } else if (agent.config.presets[presetName]) {
             console.log(chalk.green(agent.switchModel(presetName)));
             console.log(chalk.gray(`   Modello: ${agent.currentModel}`));
+            justSetPresetManually = true;
         } else {
             console.log(chalk.red(`Modello non trovato. Usa /list per vedere i disponibili`));
         }
@@ -81,7 +87,14 @@ ${chalk.yellow('Altri comandi:')}
   !current     - Modello attuale
   !clear       - Pulisci cronologia
   !shell <cmd> - Esegui comando shell
+  !feedback +  - L'ultima risposta e' stata utile
+  !feedback -  - L'ultima risposta NON e' stata utile
   !exit        - Esci
+
+${chalk.yellow('Instradamento automatico:')}
+  Scrivendo un task senza scegliere un preset a mano, Chimera suggerisce
+  quello piu' adatto e chiede conferma prima di usarlo (Fase 1, vedi
+  PIANO-SVILUPPO.md).
                 `);
                 break;
                 
@@ -136,6 +149,16 @@ ${chalk.yellow('Altri comandi:')}
                 }
                 break;
                 
+            case '!feedback': {
+                const rating = args[0];
+                if (rating !== '+' && rating !== '-') {
+                    console.log(chalk.red('Uso: !feedback + oppure !feedback -'));
+                } else {
+                    console.log(chalk.gray(agent.logQualityFeedback(rating)));
+                }
+                break;
+            }
+
             case '!exit':
                 console.log(chalk.green('\n?????? Chimera si ritira...'));
                 console.log(chalk.gray(`Token totali: ${totalTokens.toLocaleString()}`));
@@ -148,6 +171,36 @@ ${chalk.yellow('Altri comandi:')}
         return;
     }
     
+    if (justSetPresetManually) {
+        // Scelta manuale appena fatta: ha priorita', il suggerimento non la
+        // sovrascrive per questo task. Si consuma qui: dal prossimo task il
+        // suggerimento torna a funzionare normalmente.
+        justSetPresetManually = false;
+    } else {
+        const suggested = agent.suggestPreset(trimmed);
+        const current = agent.getCurrentPresetName();
+
+        if (suggested && suggested !== current) {
+            const answer = await new Promise(resolve => {
+                rl.question(
+                    chalk.cyan(`Task rilevato come ${suggested} → uso /${suggested}? [invio per confermare, o scrivi un altro preset]: `),
+                    a => resolve(a.trim())
+                );
+            });
+
+            if (answer === '') {
+                console.log(chalk.green(agent.switchModel(suggested)));
+            } else {
+                const chosen = answer.replace(/^\//, '').toLowerCase();
+                if (agent.config.presets[chosen]) {
+                    console.log(chalk.green(agent.switchModel(chosen)));
+                } else {
+                    console.log(chalk.gray(`Preset "${answer}" non riconosciuto, resto su /${current}.`));
+                }
+            }
+        }
+    }
+
     process.stdout.write(chalk.gray('Pensando... '));
     
     try {

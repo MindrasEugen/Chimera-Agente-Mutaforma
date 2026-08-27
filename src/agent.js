@@ -33,6 +33,28 @@ function isForbiddenShellCommand(cmd) {
     return FORBIDDEN_SHELL_PATTERNS.some(re => re.test(cmd));
 }
 
+// Euristica di instradamento (Fase 1, vedi PIANO-SVILUPPO.md): parole chiave
+// per categoria concettuale. Una categoria viene suggerita solo se esiste
+// davvero un preset con quel nome in config.json, cosi' l'euristica resta
+// valida anche se i preset configurati cambiano (es. "creativo" non esiste
+// oggi, ma le regole restano pronte per quando verra' aggiunto).
+const ROUTING_KEYWORDS = {
+    tecnico: [
+        /\bbug\b/i, /\bfunzion[ei]\b/i, /\berrore\b/i, /\bdebug/i, /\bcodice\b/i,
+        /\beccezione\b/i, /\bcompil/i, /\bstack\s*trace\b/i, /\bapi\b/i,
+        /\brefactor/i, /```/,
+    ],
+    creativo: [
+        /\bscrivi\b/i, /\bracconto\b/i, /\bpoesia\b/i, /\bemail\b/i, /\bstoria\b/i,
+        /\bslogan\b/i, /\barticolo\b/i, /\bcanzone\b/i,
+    ],
+    potente: [
+        /\bconfronta\b/i, /\bspiega\s+perch[eé]/i, /\bqual\s+[eè]\s+il\s+modo\s+migliore\b/i,
+        /\banalizza\b/i, /\bvaluta\b/i, /\bstrategia\b/i, /\bpro\s+e\s+contro\b/i,
+        /\bragiona\b/i,
+    ],
+};
+
 class ChimeraAgent {
     constructor(options = {}) {
         const configPath = path.join(os.homedir(), '.chimera', 'config.json');
@@ -58,6 +80,10 @@ class ChimeraAgent {
         this.healthChecked = false;
         this.failedModels = new Set();
         this.modelErrors = {};
+
+        // Ultimo task completato con successo: usato da !feedback per
+        // sapere a quale preset/modello/task associare il giudizio.
+        this.lastTask = null;
 
         // Funzione usata per chiedere conferma manuale prima di eseguire
         // comandi shell o scritture su file. Chi integra l'agente (es.
@@ -86,6 +112,31 @@ class ChimeraAgent {
             return `?? Mutato in: ${preset} (${this.config.presets[preset].description})`;
         }
         return `Preset non trovato. Disponibili: ${Object.keys(this.config.presets).join(', ')}`;
+    }
+
+    // Fase 1 dell'instradamento (vedi PIANO-SVILUPPO.md): euristica a parole
+    // chiave, nessuna chiamata AI. Ritorna il nome di un preset esistente in
+    // config.presets, o null se non c'e' un suggerimento chiaro (in quel
+    // caso chi chiama deve lasciare il preset attuale invariato).
+    suggestPreset(userInput) {
+        const scores = {};
+
+        for (const [category, patterns] of Object.entries(ROUTING_KEYWORDS)) {
+            if (!this.config.presets[category]) continue;
+            const hits = patterns.filter(re => re.test(userInput)).length;
+            if (hits > 0) scores[category] = hits;
+        }
+
+        const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+        if (ranked.length > 0) return ranked[0][0];
+
+        // Nessun segnale di categoria: un task breve e diretto va sul preset
+        // veloce, se configurato. Altrimenti nessun suggerimento.
+        if (userInput.trim().length < 60 && this.config.presets.veloce) {
+            return 'veloce';
+        }
+
+        return null;
     }
 
     async checkModelHealth(model) {
@@ -122,6 +173,47 @@ class ChimeraAgent {
             fs.appendFileSync(logPath, line);
         } catch (e) {
             console.log(`?? Impossibile scrivere logs/model-swaps.log: ${e.message}`);
+        }
+    }
+
+    // Punto 2 della sessione (vedi PIANO-SVILUPPO.md): !feedback +/- in
+    // bin/chimera.js chiama questo metodo per registrare se l'ultima
+    // risposta e' stata utile. Alimenta la Fase 2 (raffinamento euristiche).
+    logQualityFeedback(rating) {
+        if (!this.lastTask) {
+            return 'Nessun task recente a cui associare il feedback.';
+        }
+        try {
+            const logDir = path.join(os.homedir(), '.chimera', 'logs');
+            if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+            const logPath = path.join(logDir, 'quality.jsonl');
+            const entry = {
+                timestamp: new Date().toISOString(),
+                preset: this.lastTask.preset,
+                model: this.lastTask.model,
+                task: this.lastTask.taskExcerpt,
+                rating,
+            };
+            fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
+            return `Feedback (${rating}) registrato per preset "${this.lastTask.preset}".`;
+        } catch (e) {
+            return `Impossibile scrivere logs/quality.jsonl: ${e.message}`;
+        }
+    }
+
+    // Punto 3 della sessione: log di errori che impediscono di completare
+    // un task (non i semplici alive:false di routine, quelli restano solo
+    // in logs/health_*.json). Vive dentro il progetto Chimera stesso
+    // (~/.chimera/logs/), MAI dentro %USERPROFILE%\.claude\.
+    logChimeraFailure(presetName, model, userInput, errorMessage) {
+        try {
+            const logDir = path.join(os.homedir(), '.chimera', 'logs');
+            if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+            const logPath = path.join(logDir, 'chimera-failures.md');
+            const entry = `\n## ${new Date().toISOString()}\n- Preset: ${presetName}\n- Modello: ${model}\n- Task: ${userInput.substring(0, 150)}\n- Errore: ${errorMessage}\n`;
+            fs.appendFileSync(logPath, entry);
+        } catch (e) {
+            console.log(`?? Impossibile scrivere logs/chimera-failures.md: ${e.message}`);
         }
     }
 
@@ -274,11 +366,18 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 this.history = this.history.slice(-this.maxHistory * 2);
             }
 
+            this.lastTask = {
+                preset: this.getCurrentPresetName(),
+                model: this.currentModel,
+                taskExcerpt: userInput.substring(0, 100),
+            };
+
             return { reply, model: this.currentModel, tokens: response.usage?.total_tokens || 0 };
         } catch (error) {
             const presetName = this.getCurrentPresetName();
 
             if (error.status === 429) {
+                this.logChimeraFailure(presetName, this.currentModel, userInput, `Rate limit (429): ${error.message}`);
                 return { reply: `? Rate limit per ${presetName}. Prova /bilanciato o attendi.`, model: this.currentModel, tokens: 0 };
             }
 
@@ -291,6 +390,7 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 }
             }
 
+            this.logChimeraFailure(presetName, this.currentModel, userInput, error.message);
             return { reply: `? ${error.message}`, model: this.currentModel, tokens: 0 };
         }
     }
