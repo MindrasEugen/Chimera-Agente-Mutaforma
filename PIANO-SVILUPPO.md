@@ -70,6 +70,16 @@ Richiesta e completata nella sessione della Fase 1, non fa parte delle fasi di i
 - **Icone/caratteri corrotti in console** — ✅ risolto. `bin/chimera.js` e `src/agent.js` avevano sequenze `??`/`�` al posto di emoji (probabile problema di codifica in un salvataggio precedente al di fuori di questo progetto), incluse due parole italiane rovinate ("pi�" → "più", "disponibilit�" → "disponibilità"). Sostituite con emoji reali e coerenti per categoria (✅/❌ vivo-morto, 🔧 auto-guarigione, 💻 shell, 📝 scrittura file, 📄 lettura file, 📁 elenco directory, 🚫 bloccato/annullato, 🎭 identità di Chimera). Verificato a occhio con uno script di prova poi rimosso.
 - **`!health` chiamava un metodo inesistente** — ✅ risolto. In `bin/chimera.js`, il ramo "cerco alternative gratuite" (scatta solo quando `checkAllModels()` trova almeno un modello morto) chiamava `agent.findFreeAlternatives()`, mai esistito su `ChimeraAgent` — solo `findAllFreeModels()` (stessa firma: nessun argomento, ritorna `[{id, name, description}]`). Il bug non si manifestava nei test perché scattava solo col modello morto, cioè proprio il caso d'uso principale di `!health`. Corretto rinominando la chiamata. Verificato simulando un modello morto (monkey-patch temporaneo di `checkModelHealth`/`healPreset`, script poi rimosso): nessun crash, alternative elencate correttamente.
 
+## Esempi osservati in uso reale
+
+**2026-08-27** — prima rotazione automatica osservata in uso normale (non un test), durante un `!health`:
+
+- `veloce`: `poolside/laguna-xs-2.1:free` risultato morto → sostituito automaticamente con `inclusionai/ling-3.0-flash-fin:free`.
+- `creativo`: `google/gemma-4-31b-it:free` (il modello scelto per questo preset in Fase 4, pochi giorni prima) risultato morto → sostituito automaticamente con `dots-studio/dots-3-note-preview:free`.
+- Nessun intervento manuale richiesto, nessun errore: `healPreset()` ha gestito entrambe le sostituzioni nello stesso ciclo di `!health`. Confermato in `config.json` (modelli aggiornati) e `logs/model-swaps.log` (righe `2026-08-27T18:33:32.567Z` e `2026-08-27T18:33:39.392Z`).
+
+*Perché tenerne traccia:* mostra che la rotazione dei modelli gratuiti non è un caso limite raro ma un evento concreto e frequente — il preset `creativo`, aggiunto da pochissimo, è già alla sua prima sostituzione. Utile come riferimento futuro se si vorrà valutare quali provider (OpenRouter free tier) risultano più stabili nel tempo, magari incrociando questi dati con `logs/model-swaps.log` su una finestra più lunga.
+
 ## Stato del progetto
 
 - **Fase 1** (instradamento a parole chiave): implementata e verificata, sia sintatticamente sia con esempi di task reali.
