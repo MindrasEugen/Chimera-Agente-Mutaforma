@@ -39,6 +39,9 @@ agent.startupHealthCheck().then(result => {
     if (result && result.deadModels.length > 0) {
         console.log(chalk.yellow('⚠️  Alcuni modelli non disponibili. Usa !health per dettagli.\n'));
     }
+    if (result && result.rateLimitedModels.length > 0) {
+        console.log(chalk.yellow('⏳ Limite giornaliero modelli gratuiti raggiunto. Usa !health per dettagli.\n'));
+    }
 });
 
 console.log(chalk.gray('/veloce | /potente | /creativo | /tecnico | /list | !help | !exit'));
@@ -109,9 +112,9 @@ ${chalk.yellow('Instradamento automatico:')}
 
             case '!health':
                 console.log(chalk.yellow('\n🩺 Verifica disponibilità modelli...\n'));
-                const { results, deadModels } = await agent.checkAllModels();
+                const { results, deadModels, rateLimitedModels } = await agent.checkAllModels();
                 results.forEach(r => {
-                    const icon = r.alive ? '✅' : '❌';
+                    const icon = r.alive ? '✅' : (r.globalRateLimit ? '⏳' : '❌');
                     console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
                     if (!r.alive) {
                         console.log(`     ${chalk.red(r.error?.substring(0, 100))}`);
@@ -119,6 +122,11 @@ ${chalk.yellow('Instradamento automatico:')}
                         console.log(`     ${chalk.yellow(`[vivo ma qualita' scarsa] ${Math.round(r.qualityRatio * 100)}% feedback positivo su ${r.qualityFeedbackCount} valutazioni`)}`);
                     }
                 });
+
+                if (rateLimitedModels.length > 0) {
+                    console.log(chalk.yellow(agent.formatGlobalRateLimitMessage(rateLimitedModels)));
+                }
+
                 if (deadModels.length > 0) {
                     console.log(`\n${chalk.yellow('⚠️  Modelli non disponibili:')} ${deadModels.join(', ')}`);
                     console.log(chalk.yellow('🔍 Cerco alternative gratuite...\n'));
@@ -129,7 +137,7 @@ ${chalk.yellow('Instradamento automatico:')}
                             console.log(`  🔹 ${chalk.cyan(alt.id)}`);
                         });
                     }
-                } else {
+                } else if (rateLimitedModels.length === 0) {
                     console.log(`\n${chalk.green('✅ Tutti i modelli sono attivi!')}`);
                 }
                 console.log('');

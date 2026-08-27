@@ -51,6 +51,19 @@ function isDestructiveShellCommand(cmd) {
     return DESTRUCTIVE_SHELL_PATTERNS.some(re => re.test(cmd));
 }
 
+// Un 429 "free-models-per-day" di OpenRouter e' un limite giornaliero
+// sull'INTERO account per i modelli gratuiti, non un problema del singolo
+// modello interrogato. Va distinto da un 429 di throttling normale (troppe
+// richieste in un breve intervallo, che si risolve da solo) e da un modello
+// realmente morto/disabilitato: sostituire il modello non serve a niente in
+// questo caso, e va anche riprovato lo stesso identico limite per ogni
+// alternativa trovata. Il match e' sul testo del messaggio (non su un campo
+// dedicato) perche' e' cosi' che OpenRouter lo espone: nessun codice/campo
+// strutturato piu' specifico e' documentato per questo caso.
+function isGlobalFreeRateLimitError(error) {
+    return error?.status === 429 && /free-models-per-day/i.test(error.message || '');
+}
+
 // Euristica di instradamento (Fase 1, vedi PIANO-SVILUPPO.md): parole chiave
 // per categoria concettuale. Una categoria viene suggerita solo se esiste
 // davvero un preset con quel nome in config.json, cosi' l'euristica resta
@@ -212,7 +225,12 @@ class ChimeraAgent {
             });
             return { alive: true };
         } catch (error) {
-            return { alive: false, error: error.message, status: error.status };
+            return {
+                alive: false,
+                error: error.message,
+                status: error.status,
+                globalRateLimit: isGlobalFreeRateLimitError(error),
+            };
         }
     }
 
@@ -350,12 +368,31 @@ class ChimeraAgent {
     async checkAllModels() {
         const results = [];
         const deadModels = [];
+        const rateLimitedModels = [];
+
+        // Vero solo se e' gia' stato rilevato, in QUESTO ciclo, un 429
+        // "free-models-per-day" (limite giornaliero sull'intero account per
+        // i modelli gratuiti). Una volta vero, healPreset() non viene piu'
+        // invocato per nessun preset rimanente nel ciclo: sostituire il
+        // modello non risolve un limite di account, e ogni tentativo di
+        // trovare/verificare un'alternativa sbatterebbe di nuovo contro lo
+        // stesso identico limite, sprecando tentativi e riscrivendo
+        // config.json inutilmente.
+        let globalRateLimitHit = false;
 
         for (const [name, preset] of Object.entries(this.config.presets)) {
             const health = await this.checkModelHealth(preset.model);
             results.push({ name, model: preset.model, ...health });
 
             if (!health.alive) {
+                if (health.globalRateLimit) globalRateLimitHit = true;
+
+                if (globalRateLimitHit) {
+                    rateLimitedModels.push(name);
+                    this.modelErrors[name] = health.error;
+                    continue;
+                }
+
                 deadModels.push(name);
                 this.modelErrors[name] = health.error;
 
@@ -390,7 +427,7 @@ class ChimeraAgent {
         fs.writeFileSync(reportPath, JSON.stringify(results, null, 2));
         fs.writeFileSync(path.join(logDir, 'last_check.json'), JSON.stringify({ timestamp: Date.now() }));
 
-        return { results, deadModels };
+        return { results, deadModels, rateLimitedModels };
     }
 
     shouldHealthCheck() {
@@ -405,25 +442,42 @@ class ChimeraAgent {
     async startupHealthCheck() {
         if (!this.shouldHealthCheck()) return null;
         console.log('🩺 Verifica modelli...\n');
-        const { results, deadModels } = await this.checkAllModels();
+        const { results, deadModels, rateLimitedModels } = await this.checkAllModels();
 
         results.forEach(r => {
-            const icon = r.alive ? '✅' : '❌';
+            const icon = r.alive ? '✅' : (r.globalRateLimit ? '⏳' : '❌');
             console.log(`  ${icon} ${r.name.padEnd(12)} ${r.model}`);
             if (r.qualityWarning) {
                 console.log(chalk.yellow(`     [qualita' scarsa] ${Math.round(r.qualityRatio * 100)}% feedback positivo su ${r.qualityFeedbackCount} valutazioni`));
             }
         });
 
+        if (rateLimitedModels.length > 0) {
+            console.log(chalk.yellow(this.formatGlobalRateLimitMessage(rateLimitedModels)));
+        }
+
         if (deadModels.length > 0) {
             console.log(`\n⚠️  ${deadModels.length} modelli riparati automaticamente. Usa !health per dettagli.`);
-        } else {
+        } else if (rateLimitedModels.length === 0) {
             console.log(`\n✅ Tutti i modelli sono attivi!`);
         }
 
         console.log('');
         this.healthChecked = true;
-        return { results, deadModels };
+        return { results, deadModels, rateLimitedModels };
+    }
+
+    // Messaggio condiviso tra startupHealthCheck() e !health (bin/chimera.js)
+    // per il caso "limite giornaliero globale sui modelli free", cosi' che
+    // resti identico nei due punti in cui puo' apparire.
+    formatGlobalRateLimitMessage(rateLimitedModels) {
+        return `\n⏳ Limite giornaliero raggiunto per i modelli gratuiti (${rateLimitedModels.join(', ')}).\n` +
+            `   Non e' un problema di questi modelli specifici: e' un limite sull'INTERO account OpenRouter\n` +
+            `   per le richieste ai modelli free. Sostituirli automaticamente non risolverebbe nulla — sbatterebbero\n` +
+            `   di nuovo contro lo stesso limite — quindi non e' stato tentato.\n` +
+            `   Il limite si resetta ogni giorno (OpenRouter non specifica un orario esatto).\n` +
+            `   Per superarlo subito, OpenRouter offre l'opzione di aggiungere credito al tuo account\n` +
+            `   ("Add 10 credits to unlock 1000 free model requests per day") — solo se vuoi, nessun obbligo.`;
     }
 
     getCurrentPresetName() {
@@ -491,6 +545,9 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
 
             if (error.status === 429) {
                 this.logChimeraFailure(presetName, this.currentModel, userInput, `Rate limit (429): ${error.message}`);
+                if (isGlobalFreeRateLimitError(error)) {
+                    return { reply: this.formatGlobalRateLimitMessage([presetName]), model: this.currentModel, tokens: 0 };
+                }
                 return { reply: `⏳ Rate limit per ${presetName}. Prova /bilanciato o attendi.`, model: this.currentModel, tokens: 0 };
             }
 
