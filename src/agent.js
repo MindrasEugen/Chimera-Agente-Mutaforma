@@ -512,21 +512,26 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
         // Comandi shell: richiedono conferma esplicita dell'utente.
         const shellMatches = [...text.matchAll(/```shell\n([\s\S]*?)```/g)];
         for (const m of shellMatches) {
-            const cmd = m[1].trim();
+            const block = m[1].trim();
+            // Un blocco puo' contenere piu' comandi, uno per riga: vanno
+            // eseguiti ed esitati singolarmente (vedi sotto il motivo).
+            const cmds = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-            if (isForbiddenShellCommand(cmd)) {
-                console.log(chalk.red(`\n🚫 Comando bloccato dalla whitelist di sicurezza (non eseguibile nemmeno con conferma):\n   ${cmd}`));
+            if (isForbiddenShellCommand(block) || cmds.some(isForbiddenShellCommand)) {
+                console.log(chalk.red(`\n🚫 Comando bloccato dalla whitelist di sicurezza (non eseguibile nemmeno con conferma):\n   ${block}`));
                 text = text.replace(m[0], m[0] + '\n🚫 Comando bloccato dalla whitelist di sicurezza (potenzialmente distruttivo).');
                 continue;
             }
 
+            const multi = cmds.length > 1;
+            const cmdList = cmds.map(c => '   ' + c).join('\n');
             let confirmed;
-            if (isDestructiveShellCommand(cmd)) {
-                console.log(chalk.red(`\n⚠️  Il modello vuole eseguire questo comando distruttivo e IRREVERSIBILE:\n   ${cmd}`));
-                confirmed = await this.confirmWordFn('Digita per intero "CONFERMO" per eseguirlo (qualsiasi altra risposta annulla): ', 'CONFERMO');
+            if (isDestructiveShellCommand(block) || cmds.some(isDestructiveShellCommand)) {
+                console.log(chalk.red(`\n⚠️  Il modello vuole eseguire ${multi ? 'questi comandi distruttivi e IRREVERSIBILI' : 'questo comando distruttivo e IRREVERSIBILE'}:\n${cmdList}`));
+                confirmed = await this.confirmWordFn('Digita per intero "CONFERMO" per eseguirli (qualsiasi altra risposta annulla): ', 'CONFERMO');
             } else {
-                console.log(chalk.yellow(`\n💻 Il modello vuole eseguire questo comando shell:\n   ${cmd}`));
-                confirmed = await this.confirmFn('Eseguire questo comando? (y/n): ');
+                console.log(chalk.yellow(`\n💻 Il modello vuole eseguire ${multi ? 'questi comandi shell' : 'questo comando shell'}:\n${cmdList}`));
+                confirmed = await this.confirmFn('Eseguire? (y/n): ');
             }
 
             if (!confirmed) {
@@ -535,14 +540,27 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
                 continue;
             }
 
-            try {
-                const { stdout, stderr } = await execAsync(cmd, {
-                    timeout: 30000, maxBuffer: 5 * 1024 * 1024, cwd: process.cwd()
-                });
-                text = text.replace(m[0], m[0] + '\n🖥️ ' + (stdout || stderr || '(ok)').trim());
-            } catch (e) {
-                text = text.replace(m[0], m[0] + '\n❌ ' + e.message);
+            // Esegui ogni comando singolarmente, in sequenza, verificando il
+            // successo di CIASCUNO individualmente. Su Windows, passare un
+            // blocco multi-riga intero a un'unica execAsync() fa si' che
+            // cmd.exe esegua silenziosamente solo la prima riga e scarti il
+            // resto: nessun errore, nessuno stderr, exit code 0. Un report
+            // unico di "successo" basato su quell'exit code sarebbe percio'
+            // falso ogni volta che una riga successiva alla prima fallisce
+            // o viene ignorata.
+            const results = [];
+            for (const singleCmd of cmds) {
+                try {
+                    const { stdout, stderr } = await execAsync(singleCmd, {
+                        timeout: 30000, maxBuffer: 5 * 1024 * 1024, cwd: process.cwd()
+                    });
+                    const out = (stdout || stderr || '').trim();
+                    results.push(`✅ ${singleCmd}` + (out ? `\n   ${out}` : ''));
+                } catch (e) {
+                    results.push(`❌ ${singleCmd}\n   ${e.message}`);
+                }
             }
+            text = text.replace(m[0], m[0] + '\n🖥️\n' + results.join('\n'));
         }
 
         // Scrivi file: richiede conferma esplicita dell'utente.
