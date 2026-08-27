@@ -21,6 +21,8 @@ Preset attualmente configurati (`config.json`):
 
 I modelli dietro ciascun preset possono cambiare nel tempo (rotazione automatica via `healPreset`) — l'elenco affidabile è sempre `/list` dentro l'app, non questa tabella.
 
+In uso reale questa rotazione non è un caso limite raro: è già capitato che più preset venissero sostituiti automaticamente nello stesso giorno (i modelli gratuiti su OpenRouter cambiano disponibilità con una certa frequenza). È il motivo per cui la tabella qui sopra va presa come indicazione, non come fonte di verità — quella resta sempre `/list`.
+
 ## 2. Setup
 
 **Requisiti:** Node.js 18 o superiore (Chimera usa `fetch` nativo, senza dipendenze aggiuntive per le chiamate HTTP dirette a OpenRouter).
@@ -60,13 +62,15 @@ node bin/chimera.js
 | Comando | Cosa fa |
 |---|---|
 | `!help` | Mostra l'aiuto (preset con relative descrizioni, letti da `config.json`) |
-| `!health` | Verifica se i modelli configurati rispondono; per un modello morto propone alternative gratuite; per un modello vivo ma con feedback di qualità scarso lo segnala senza sostituirlo |
+| `!health` | Verifica se i modelli configurati rispondono; per un modello morto propone alternative gratuite; per un modello vivo ma con feedback di qualità scarso lo segnala senza sostituirlo; per un limite di account (icona ⏳, vedi nota sotto) non propone alternative inutili |
 | `!current` | Mostra il preset e il modello attualmente in uso |
 | `!clear` | Svuota la cronologia della conversazione |
 | `!shell <comando>` | Esegue un comando shell direttamente (bypassa il modello — utile per verifiche rapide) |
 | `!feedback +` | Segnala che l'ultima risposta è stata utile |
 | `!feedback -` | Segnala che l'ultima risposta NON è stata utile |
 | `!exit` | Esce, mostrando il totale token usati nella sessione |
+
+**❌ vs ⏳ in `!health`** — le due icone segnalano cause diverse e vanno gestite in modo diverso: ❌ è un modello davvero morto o disabilitato (propone alternative gratuite, come sempre); ⏳ è un rate limit giornaliero sull'**intero account** OpenRouter per i modelli gratuiti, non un problema del singolo modello — in questo caso Chimera non propone sostituzioni (sarebbe inutile: qualsiasi altro modello gratuito sbatterebbe contro lo stesso limite) e mostra invece un messaggio che spiega che il limite si resetta ogni giorno e che è possibile aggiungere credito su OpenRouter per sbloccare più richieste.
 
 **Suggerimento automatico del preset** — quando scrivi un task in chiaro (non `/comando`, non `!comando`) senza aver appena selezionato un preset a mano, Chimera valuta il testo con un'euristica a parole chiave e, se individua un preset diverso da quello attivo, chiede conferma:
 
@@ -82,7 +86,12 @@ Se il suggerimento coincide col preset già attivo, non viene chiesto nulla. Se 
 
 ## 4. Sicurezza
 
-Quando un modello propone di eseguire un comando shell o di scrivere/creare un file, Chimera mostra sempre il contenuto esatto e chiede conferma esplicita (`y`/`n`) prima di agire — **non c'è mai esecuzione automatica**. Se rifiuti, l'azione non avviene e viene segnalato chiaramente nell'output. Letture di file ed elenchi di directory restano automatici (sola lettura, rischio minimo). Esiste inoltre una lista di comandi shell bloccati a prescindere dalla conferma (es. `format`, comandi su `system32`, `shutdown`, `diskpart`) come rete di sicurezza aggiuntiva.
+Quando un modello propone di eseguire un comando shell o di scrivere/creare un file, Chimera mostra sempre il contenuto esatto e chiede conferma esplicita prima di agire — **non c'è mai esecuzione automatica**. Se rifiuti, l'azione non avviene e viene segnalato chiaramente nell'output. Letture di file ed elenchi di directory restano automatici (sola lettura, rischio minimo). Scrittura/creazione di file (`write`) resta con la normale conferma `y`/`n`, invariata.
+
+Per i comandi shell, la blocklist è divisa in due livelli:
+
+- **Livello 1 — blocco assoluto**: comandi che rischiano di compromettere l'intero sistema operativo (`format`, comandi su `system32`, `shutdown`, `diskpart` e simili). Nessuna conferma, di nessun tipo, li sblocca.
+- **Livello 2 — conferma rafforzata**: comandi distruttivi ma circoscritti a file/cartelle (`del /f /s /q`, `rmdir /s /q`, `Remove-Item -Recurse -Force` e varianti equivalenti). Non sono bloccati a monte — spesso sono legittimi — ma invece della semplice `y`/`n` va digitata per intero la parola `CONFERMO` (non case-sensitive, ma parola intera): un gesto deliberato per un'azione che altrimenti sarebbe irreversibile.
 
 La API key OpenRouter vive solo in `.env`, mai in un file tracciato da git.
 

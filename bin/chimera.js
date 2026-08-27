@@ -28,7 +28,7 @@ const agent = new ChimeraAgent({
         rl.question(promptText, answer => resolve(answer.trim().toLowerCase() === word.toLowerCase()));
     })
 });
-let totalTokens = 0;
+let sessionTokenCount = 0;
 
 // Diventa true subito dopo una selezione manuale di preset (/comando):
 // sopprime il suggerimento di instradamento per il task immediatamente
@@ -182,7 +182,7 @@ ${chalk.yellow('Instradamento automatico:')}
 
             case '!exit':
                 console.log(chalk.green('\n👋 Chimera si ritira...'));
-                console.log(chalk.gray(`Token totali: ${totalTokens.toLocaleString()}`));
+                console.log(chalk.gray(`Token totali: ${sessionTokenCount.toLocaleString()}`));
                 process.exit(0);
                 
             default:
@@ -226,11 +226,11 @@ ${chalk.yellow('Instradamento automatico:')}
     
     try {
         const result = await agent.think(trimmed);
-        totalTokens += result.tokens;
+        sessionTokenCount += result.tokens;
         console.log('\n' + chalk.gray('-'.repeat(50)));
         console.log(result.reply);
         console.log(chalk.gray('-'.repeat(50)));
-        console.log(chalk.gray(`🎭 ${agent.getCurrentPresetName()} | ${result.tokens} token | Totale: ${totalTokens.toLocaleString()}`));
+        console.log(chalk.gray(`🎭 ${agent.getCurrentPresetName()} | ${result.tokens} token | Totale: ${sessionTokenCount.toLocaleString()}`));
     } catch (error) {
         console.log(chalk.red(`Errore: ${error.message}`));
     }
