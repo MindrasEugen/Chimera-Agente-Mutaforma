@@ -119,7 +119,7 @@ ${chalk.yellow('Instradamento automatico:')}
                 if (deadModels.length > 0) {
                     console.log(`\n${chalk.yellow('??  Modelli non disponibili:')} ${deadModels.join(', ')}`);
                     console.log(chalk.yellow('?? Cerco alternative gratuite...\n'));
-                    const alternatives = await agent.findFreeAlternatives();
+                    const alternatives = await agent.findAllFreeModels();
                     if (alternatives.length > 0) {
                         console.log(chalk.bold('Modelli free disponibili:'));
                         alternatives.slice(0, 10).forEach(alt => {

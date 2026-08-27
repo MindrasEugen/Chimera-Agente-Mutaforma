@@ -65,6 +65,10 @@ Richiesta e completata nella sessione della Fase 1, non fa parte delle fasi di i
 - **Log di qualità** (`logs/quality.jsonl`) — ✅ completato. Comandi `!feedback +` / `!feedback -`, una riga JSON per feedback con data, preset, modello, primi 100 caratteri del task, esito. Alimenta la Fase 2 sopra.
 - **Log di errori rilevanti** (`logs/chimera-failures.md`) — ✅ completato. Registra i casi in cui un task non viene completato (rate limit dopo tutti i tentativi, errore non recuperato da `healPreset`) — non i semplici `alive:false` di routine, quelli restano solo in `logs/health_*.json` come già facevano. File dentro `~/.chimera/logs/`, mai in `%USERPROFILE%\.claude\`.
 
+## Bug preesistenti risolti
+
+- **`!health` chiamava un metodo inesistente** — ✅ risolto. In `bin/chimera.js`, il ramo "cerco alternative gratuite" (scatta solo quando `checkAllModels()` trova almeno un modello morto) chiamava `agent.findFreeAlternatives()`, mai esistito su `ChimeraAgent` — solo `findAllFreeModels()` (stessa firma: nessun argomento, ritorna `[{id, name, description}]`). Il bug non si manifestava nei test perché scattava solo col modello morto, cioè proprio il caso d'uso principale di `!health`. Corretto rinominando la chiamata. Verificato simulando un modello morto (monkey-patch temporaneo di `checkModelHealth`/`healPreset`, script poi rimosso): nessun crash, alternative elencate correttamente.
+
 ## Stato del progetto
 
 - **Fase 1** (instradamento a parole chiave): implementata e verificata, sia sintatticamente sia con esempi di task reali.
