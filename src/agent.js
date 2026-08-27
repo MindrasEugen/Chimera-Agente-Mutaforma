@@ -548,11 +548,37 @@ Per tutto il resto, rispondi normalmente senza usare blocchi di azione.`;
             // unico di "successo" basato su quell'exit code sarebbe percio'
             // falso ogni volta che una riga successiva alla prima fallisce
             // o viene ignorata.
+            //
+            // Ogni execAsync() e' un processo shell indipendente: non eredita
+            // la working directory lasciata da un `cd` di un comando
+            // precedente nello stesso blocco. Per condividere lo stato tra i
+            // comandi senza tornare a un'unica esecuzione aggregata, il `cd`
+            // non viene eseguito come comando shell: la nuova directory viene
+            // risolta e verificata qui, e usata come `cwd` per i comandi
+            // successivi del blocco.
             const results = [];
+            let currentCwd = process.cwd();
             for (const singleCmd of cmds) {
+                const cdMatch = singleCmd.match(/^cd\s+(?:\/d\s+)?(.+)$/i);
+                if (cdMatch) {
+                    let target = cdMatch[1].trim();
+                    if ((target.startsWith('"') && target.endsWith('"')) || (target.startsWith("'") && target.endsWith("'"))) {
+                        target = target.slice(1, -1);
+                    }
+                    const resolved = path.resolve(currentCwd, target);
+                    try {
+                        if (!fs.statSync(resolved).isDirectory()) throw new Error('Non e\' una cartella');
+                        currentCwd = resolved;
+                        results.push(`✅ ${singleCmd}`);
+                    } catch (e) {
+                        results.push(`❌ ${singleCmd}\n   Impossibile trovare il percorso specificato: ${resolved}`);
+                    }
+                    continue;
+                }
+
                 try {
                     const { stdout, stderr } = await execAsync(singleCmd, {
-                        timeout: 30000, maxBuffer: 5 * 1024 * 1024, cwd: process.cwd()
+                        timeout: 30000, maxBuffer: 5 * 1024 * 1024, cwd: currentCwd
                     });
                     const out = (stdout || stderr || '').trim();
                     results.push(`✅ ${singleCmd}` + (out ? `\n   ${out}` : ''));
